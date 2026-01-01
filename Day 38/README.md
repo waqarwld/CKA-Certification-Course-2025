@@ -473,68 +473,132 @@ Even though admission controllers can enforce security and compliance policies b
 
 ---
 
+### **OPA Gatekeeper as an Admission Controller (Validation + Mutation Layer)**
 
+Use OPA Gatekeeper as an admission controller when you need **fine-grained compliance, security, and governance policies** inside the cluster. Gatekeeper is ideal for regulating *how* workloads are deployed, rather than *who* is allowed to deploy them.
 
-### 🔐 **OPA as an Admission Controller (Validation + Mutation Layer)**
-
-Use OPA (or Gatekeeper) as an admission controller when you need to enforce **granular compliance, security, and governance policies** inside the cluster. This role is **ideal for regulating *how* resources are deployed**, rather than *who* is deploying them.
+Gatekeeper’s strength lies in **policy expressiveness** (via Rego) and **enterprise-grade constraint management**.
 
 ---
 
-###  **What OPA Sees (High Visibility)**
+### **What Gatekeeper Sees (High Visibility Into Requests)**
 
-As an admission controller, OPA has access to the **entire request body**, allowing it to inspect and evaluate:
+During the admission phase, Gatekeeper receives the **entire request body**, giving it visibility into:
 
 * Pod specs and Deployment configurations
-* Container image names and registries
-* Security contexts (e.g., runAsUser, privileged)
+* Container images and registries
+* Security contexts (privileged, runAsUser, capabilities)
 * Labels, annotations, and resource limits
-* Custom fields defined in CRDs
+* Custom CRD fields
+* Network settings, probes, volumes, init containers
 
-📌 **This high visibility allows deep inspection and enforcement**, which is not possible in the authorization phase.
-
----
-
-### **What OPA Does (Validation & Mutation)**
-
-OPA or Gatekeeper can:
-
-* **Validate requests**: Ensure they meet compliance and organizational policies.
-* **Mutate requests**: Modify incoming resource specs before they are persisted in etcd.
-
-💡 *Mutation support is available via Gatekeeper’s mutation CRDs or through direct Rego policies with OPA Gatekeeper’s mutation capabilities.*
+📌 This deep inspection capability is **not available in the authorization phase**, making admission the ideal place for compliance and security policy enforcement.
 
 ---
 
-### **Examples of Admission Control Policies**
+### **What Gatekeeper Does (Validation and Mutation)**
 
-* **Only allow images from `registry.pinkcompany.com`**
-  Prevent developers from pulling untrusted or public images.
+Gatekeeper can perform two key functions:
 
-* **Containers must not run as root**
-  Enforce security hardening by blocking privileged workloads.
+#### **1. Validation**
 
-* **All Pods must have `team` and `env` labels**
-  Enforce tagging for traceability, billing, or team-level ownership.
+Using Rego-based constraint templates, Gatekeeper can **allow or deny** requests that violate:
 
-* **Inject default labels if missing**
-  Automatically mutate requests to include compliance-required fields.
+* Security rules
+* Naming conventions
+* Image registry requirements
+* Resource quotas
+* Team or environment policies
+
+Validation is Gatekeeper’s **strongest area** and the reason it is used heavily in regulated and enterprise environments.
+
+#### **2. Mutation**
+
+Modern Gatekeeper versions support mutation via **dedicated Mutation CRDs**, such as:
+
+* `Assign`
+* `AssignMetadata`
+* `ModifySet`
+
+These CRDs allow Gatekeeper to:
+
+* Add missing labels or annotations
+* Enforce default values
+* Inject configuration snippets if they adhere to supported mutation patterns
+
+⚠️ **Important:**
+Gatekeeper **cannot mutate using free-form Rego code**.
+Mutation is **only** possible through the Mutation CRDs, with a limited but growing set of capabilities.
 
 ---
 
-### **Limitations**
+### **Kyverno vs Gatekeeper (Why Kyverno Is Often Better for Many Teams)**
 
-* **OPA admission controller cannot decide *who* can take an action** (that’s the job of authorization).
-* **It operates after initial authentication and authorization are completed**—meaning it cannot block requests early, only validate or modify them before the resource is stored.
+While Gatekeeper excels at validation, **Kyverno is often the preferred choice** for real-world Kubernetes policy management because:
+
+**1. Unified Policy Language**
+Kyverno uses **Kubernetes-native YAML**, so validation, mutation, and generation policies are written in one familiar format. No Rego needed.
+
+**2. More Powerful and Flexible Mutation**
+Kyverno supports:
+
+* Complex JSON patch-style mutations
+* Conditional mutations
+* Adding containers (sidecars)
+* Mutating lists and nested fields
+* Automatically generating resources
+
+**3. Easier to adopt for DevOps teams**
+Most teams understand YAML immediately. Rego requires learning a new language.
+
+**4. Better for cluster-wide automation**
+Kyverno’s generate rules can create:
+
+* Default NetworkPolicies
+* Quotas
+* ConfigMaps or Secrets
+* Namespace templates
+
+Gatekeeper does **not** have a generation capability.
+
+**Summary:**
+Use **Gatekeeper** for strict validation and compliance-heavy environments.
+Use **Kyverno** when you need **easy policy authoring, powerful mutation, and automation**.
 
 ---
 
-### **Best Suited For:**
+### **Examples of Admission Policies Gatekeeper Can Enforce**
 
-* **Security enforcement** (e.g., pod security, image verification)
-* **Compliance** (e.g., mandatory labels, runtime configurations)
-* **Governance** (e.g., namespace isolation rules, team conventions)
-* **Automated mutation** (e.g., injecting annotations, sidecars, or defaults)
+* **Only allow images from trusted registries**
+  Ensures developers use approved supply-chain sources.
+
+* **Block privileged containers**
+  Prevent escalation risks by enforcing hardened security contexts.
+
+* **Mandatory `team` and `env` labels**
+  Improve ownership, cost allocation, and traceability.
+
+* **Inject default labels if missing (via mutation CRDs)**
+  Force compliance with organizational tagging standards.
+
+---
+
+### **Limitations of OPA Gatekeeper**
+
+* Cannot decide **who** may perform an action — that’s RBAC/authorization.
+* Mutation is **limited** and depends on supported mutation CRDs (not free-form Rego).
+* No resource generation capabilities (unlike Kyverno).
+* More complex to learn due to Rego.
+* No native support for verifying image signatures (Kyverno does).
+
+---
+
+### **Best Suited For**
+
+* **Security and compliance enforcement** (PSA, registry rules, resource constraints)
+* **Enterprise governance** (naming conventions, organizational policies)
+* **Validations requiring rich logic** (Rego can express conditions that YAML cannot)
+* **Mutation within the limits of Gatekeeper’s Mutation CRDs**
 
 ---
 
